@@ -12,7 +12,7 @@ Usage
 -----
 
 ```bash
-npm install --save le-store-certbot
+npm install --save le-store-certbot@2.x
 ```
 
 ```bash
@@ -25,6 +25,8 @@ var leStore = require('le-store-certbot').create({
 
 , workDir: require('homedir')() + '/letsencrypt/var/lib'
 , logsDir: require('homedir')() + '/letsencrypt/var/log'
+
+, webrootPath: '~/letsencrypt/srv/www/:hostname/.well-known/acme-challenge'
 
 , debug: false
 });
