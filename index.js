@@ -364,6 +364,11 @@ module.exports.create = function (configs) {
         });
       }
       // Accounts
+    , _getAccountIdByPublicKey: function (keypair) {
+        // we use insecure md5 - even though we know it's bad - because that's how the python client did
+        return require('crypto').createHash('md5').update(keypair.publicKeyPem).digest('hex');
+      }
+      // Accounts
     , checkKeypairAsync: function (args) {
         if (!(args.accountKeyPath || args.accountsDir)) {
           return PromiseA.reject(new Error("must provide one of options.accountKeyPath or options.accountsDir"));
@@ -378,8 +383,7 @@ module.exports.create = function (configs) {
         var accountId;
 
         if (args.email) {
-          // we use insecure md5 - even though we know it's bad - because that's how the python client did
-          accountId = require('crypto').createHash('md5').update(keypair.privateKeyPem).digest('hex');
+          accountId = store.accounts._getAccountIdByPublicKey(keypair);
         }
 
         return store.accounts._getAccountKeyPath({
@@ -475,7 +479,7 @@ module.exports.create = function (configs) {
       // Accounts
     , setAsync: function (args, reg) {
         var os = require("os");
-        var accountId = require('crypto').createHash('md5').update(reg.keypair.privateKeyPem).digest('hex');
+        var accountId = store.accounts._getAccountIdByPublicKey(reg.keypair);
         var accountDir = path.join(args.accountsDir, accountId);
         var accountMeta = {
           creation_host: os.hostname()
@@ -501,6 +505,14 @@ module.exports.create = function (configs) {
              */
           , fs.writeFileAsync(path.join(accountDir, 'regr.json'), JSON.stringify({ body: reg.receipt }), 'utf8')
           ]);
+        }).then(function () {
+          return {
+            id: accountId
+          , accountId: accountId
+          , email: args.email
+          , keypair: reg.keypair
+          , receipt: reg.receipt
+          };
         });
       }
       // Accounts
