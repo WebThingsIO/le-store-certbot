@@ -230,24 +230,14 @@ module.exports.create = function (configs) {
         , fs.statAsync(args.certPath)                   // 3
         ]).then(function (arr) {
           return {
-            key: arr[0]                           // privkey.pem
-          , privkey: arr[0]                       // privkey.pem
-
-            // TODO for haproxy
-          , fullchain: arr[1] + '\r\n' + arr[2]   // fullchain.pem
+            privkey: arr[0]                       // privkey.pem
           , cert: arr[1]                          // cert.pem
+          , chain: arr[2]                         // chain.pem
             /*
+            // TODO populate these values only if they are known
           , issuedAt: arr[3].mtime.valueOf()
           , expiresAt: arr[3].mtime.valueOf() + (90 * 24 * 60 * 60 * 100)
             */
-
-          , chain: arr[2]                         // chain.pem
-          , ca: arr[2]                            // chain.pem
-
-          , privkeyPath: args.privkeyPath
-          , fullchainPath: args.fullchainPath
-          , certPath: args.certPath
-          , chainPath: args.chainPath
           };
         }, function (err) {
           if (args.debug) {
@@ -262,8 +252,6 @@ module.exports.create = function (configs) {
         var pyobj = args.pyobj;
         var pems = args.pems;
 
-        // TODO for haproxy
-        pems.fullchain = pems.cert + '\r\n' + (pems.chain || pems.ca);
         pyobj.checkpoints = parseInt(pyobj.checkpoints, 10) || 0;
 
         var liveDir = args.liveDir || path.join(args.configDir, 'live', args.domains[0]);
@@ -286,8 +274,8 @@ module.exports.create = function (configs) {
         return mkdirpAsync(archiveDir).then(function () {
           return PromiseA.all([
             sfs.writeFileAsync(certArchive, pems.cert, 'ascii')
-          , sfs.writeFileAsync(chainArchive, (pems.chain || pems.ca), 'ascii')
-          , sfs.writeFileAsync(fullchainArchive, pems.fullchain, 'ascii')
+          , sfs.writeFileAsync(chainArchive, pems.chain, 'ascii')
+          , sfs.writeFileAsync(fullchainArchive, pems.cert + pems.chain, 'ascii')
           , sfs.writeFileAsync(
               privkeyArchive
               // TODO nix args.key, args.domainPrivateKeyPem ??
@@ -300,8 +288,8 @@ module.exports.create = function (configs) {
         }).then(function () {
           return PromiseA.all([
             sfs.writeFileAsync(certPath, pems.cert, 'ascii')
-          , sfs.writeFileAsync(chainPath, (pems.chain || pems.ca), 'ascii')
-          , sfs.writeFileAsync(fullchainPath, pems.fullchain, 'ascii')
+          , sfs.writeFileAsync(chainPath, pems.chain, 'ascii')
+          , sfs.writeFileAsync(fullchainPath, pems.cert + pems.chain, 'ascii')
           , sfs.writeFileAsync(
               privkeyPath
               // TODO nix args.key, args.domainPrivateKeyPem ??
@@ -316,29 +304,19 @@ module.exports.create = function (configs) {
           return writeRenewalConfig(args);
         }).then(function () {
           return {
-            certPath: certPath
-          , chainPath: chainPath
-          , fullchainPath: fullchainPath
-          , privkeyPath: privkeyPath
-
-            // TODO nix keypair
-          , keypair: args.domainKeypair
-
-            // TODO nix args.key, args.domainPrivateKeyPem ??
-            // some ambiguity here...
-          , privkey: (pems.privkey || pems.key) //|| RSA.exportPrivatePem(args.domainKeypair)
-          , fullchain: pems.fullchain || (pems.cert + pems.chain)
-          , chain:  (pems.chain || pems.ca)
-            // especially this one... might be cert only, might be fullchain
+            privkey: pems.privkey
           , cert: pems.cert
+          , chain: pems.chain
 
             /*
+            // TODO populate these only if they are actually known
           , issuedAt: Date.now()
           , expiresAt: Date.now() + (90 * 24 * 60 * 60 * 100)
             */
           };
         });
       }
+
     }
 
     //
