@@ -17,11 +17,11 @@ npm install --save le-store-certbot@2.x
 
 ```bash
 var leStore = require('le-store-certbot').create({
-  configDir: require('homedir')() + '/letsencrypt/etc'      // or /etc/letsencrypt or wherever
-, privkeyPath: ':config/live/:hostname/privkey.pem'         //
-, fullchainPath: ':config/live/:hostname/fullchain.pem'     // Note: both that :config and :hostname
-, certPath: ':config/live/:hostname/cert.pem'               //       will be templated as expected by
-, chainPath: ':config/live/:hostname/chain.pem'             //       node-letsencrypt
+  configDir: require('homedir')() + '/letsencrypt/etc'          // or /etc/letsencrypt or wherever
+, privkeyPath: ':configDir/live/:hostname/privkey.pem'          //
+, fullchainPath: ':configDir/live/:hostname/fullchain.pem'      // Note: both that :configDir and :hostname
+, certPath: ':configDir/live/:hostname/cert.pem'                //       will be templated as expected by
+, chainPath: ':configDir/live/:hostname/chain.pem'              //       node-letsencrypt
 
 , workDir: require('homedir')() + '/letsencrypt/var/lib'
 , logsDir: require('homedir')() + '/letsencrypt/var/log'
