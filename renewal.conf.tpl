@@ -1,4 +1,4 @@
-#cert = :config/live/:hostname/cert.pem
+#cert = :configDir/live/:hostname/cert.pem
 cert = :cert_path
 privkey = :privkey_path
 chain = :chain_path
@@ -13,7 +13,7 @@ apache_dismod = a2dismod
 register_unsafely_without_email = False
 uir = None
 installer = none
-config_dir = :config
+config_dir = :configDir
 text_mode = True
 # junk?
 # https://github.com/letsencrypt/letsencrypt/issues/1955

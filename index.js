@@ -6,76 +6,16 @@ var path = require('path');
 var fs = PromiseA.promisifyAll(require('fs'));
 var sfs = require('safe-replace');
 
-function getAccountIdByEmail(args) {
-  // If we read 10,000 account directories looking for
-  // just one email address, that could get crazy.
-  // We should have a folder per email and list
-  // each account as a file in the folder
-  // TODO
-  var email = args.email;
-  if ('string' !== typeof email) {
-    if (args.debug) {
-      console.log("[LE] No email given");
-    }
-    return PromiseA.resolve(null);
+function log(debug) {
+  if (debug) {
+    var args = Array.prototype.slice.call(arguments);
+    args.shift();
+    args.unshift("[le-store-certbot]");
+    console.log.apply(console, args);
   }
-  return fs.readdirAsync(args.accountsDir).then(function (nodes) {
-    if (args.debug) {
-      console.log("[LE] arg.accountsDir success");
-    }
-
-    return PromiseA.all(nodes.map(function (node) {
-      return fs.readFileAsync(path.join(args.accountsDir, node, 'regr.json'), 'utf8').then(function (text) {
-        var regr = JSON.parse(text);
-        regr.__accountId = node;
-
-        return regr;
-      });
-    })).then(function (regrs) {
-      var accountId;
-
-      /*
-      if (args.debug) {
-        console.log('read many regrs');
-        console.log('regrs', regrs);
-      }
-      */
-
-      regrs.some(function (regr) {
-        return regr.body.contact.some(function (contact) {
-          var match = contact.toLowerCase() === 'mailto:' + email.toLowerCase();
-          if (match) {
-            accountId = regr.__accountId;
-            return true;
-          }
-        });
-      });
-
-      if (!accountId) {
-        return null;
-      }
-
-      return accountId;
-    });
-  }).then(function (accountId) {
-    return accountId;
-  }, function (err) {
-    if ('ENOENT' === err.code) {
-      // ignore error
-      return null;
-    }
-
-    return PromiseA.reject(err);
-  });
 }
 
 function writeRenewalConfig(args) {
-  function log() {
-    if (args.debug) {
-      console.log.apply(console, arguments);
-    }
-  }
-
   var pyobj = args.pyobj;
   pyobj.checkpoints = parseInt(pyobj.checkpoints, 10) || 0;
 
@@ -90,7 +30,7 @@ function writeRenewalConfig(args) {
     //|| args.domainPrivateKeyPath || args.domainKeyPath || pyobj.keyPath
     || path.join(liveDir, 'privkey.pem');
 
-  log('[le/core.js] privkeyPath', privkeyPath);
+  log(args.debug, 'writeRenewalConfig privkeyPath', privkeyPath);
 
   var updates = {
     account: args.account.id
@@ -160,28 +100,31 @@ function pyToJson(pyobj) {
 }
 
 var defaults = {
-  configDir: '~/letsencrypt/etc'                          // /etc/letsencrypt/
-, logsDir: '~/letsencrypt/var/log'                        // /var/log/letsencrypt/
-, workDir: '~/letsencrypt/var/lib'                        // /var/lib/letsencrypt/
+  configDir: [ '~', 'letsencrypt', 'etc' ].join(path.sep)                     // /etc/letsencrypt/
+, logsDir: [ '~', 'letsencrypt', 'var', 'log' ].join(path.sep)                // /var/log/letsencrypt/
+, workDir: [ '~', 'letsencrypt', 'var', 'lib' ].join(path.sep)                // /var/lib/letsencrypt/
 
-, accountsDir: ':config/accounts/:server'
-, renewalPath: ':config/renewal/:hostname.conf'
-, renewalDir: ':config/renewal/'
+, accountsDir: [ ':configDir', 'accounts', ':serverDir' ].join(path.sep)
+, renewalPath: [ ':configDir', 'renewal', ':hostname.conf' ].join(path.sep)
+, renewalDir: [ ':configDir', 'renewal', '' ].join(path.sep)
+, serverDirGet: function (copy) {
+    return (copy.server || '').replace('https://', '').replace(/(\/)$/, '').replace(/\//g, path.sep);
+  }
 
-, privkeyPath: ':config/live/:hostname/privkey.pem'
-, fullchainPath: ':config/live/:hostname/fullchain.pem'
-, certPath: ':config/live/:hostname/cert.pem'
-, chainPath: ':config/live/:hostname/chain.pem'
+, privkeyPath: [ ':configDir', 'live', ':hostname', 'privkey.pem' ].join(path.sep)
+, fullchainPath: [ ':configDir', 'live', ':hostname', 'fullchain.pem' ].join(path.sep)
+, certPath: [ ':configDir', 'live', ':hostname', 'cert.pem' ].join(path.sep)
+, chainPath: [ ':configDir', 'live', ':hostname', 'chain.pem' ].join(path.sep)
 
 , rsaKeySize: 2048
-, webrootPath: '~/letsencrypt/srv/www/:hostname/.well-known/acme-challenge'
+, webrootPath: [ '~', 'letsencrypt', 'srv', 'www', ':hostname', '.well-known', 'acme-challenge' ].join(path.sep)
 };
 
 module.exports.create = function (configs) {
   var mergedConfigs;
 
   var store = {
-    getDefaults: function () {
+    getOptions: function () {
       if (mergedConfigs) {
         return configs;
       }
@@ -196,24 +139,52 @@ module.exports.create = function (configs) {
       return configs;
     }
 
+  , keypairs: {
+      checkAsync: function (keypath, format) {
+        return fs.readFileAsync(keypath, 'ascii').then(function (key) {
+          if ('jwk' === format) {
+            return { privateKeyJwk: JSON.parse(key) };
+          }
+          else {
+            return { privateKeyPem: key };
+          }
+        });
+      }
+    , setAsync: function (keypath, keypair, format) {
+        return mkdirpAsync(path.dirname(keypath)).then(function () {
+          var key;
+
+          if ('jwk' === format) {
+            key = JSON.stringify(keypair.privateKeyJwk, null, '  ');
+          }
+          else {
+            key = keypair.privateKeyPem;
+          }
+
+          return fs.writeFileAsync(keypath, key, 'ascii').then(function () {
+            return keypair;
+          });
+        });
+      }
+    }
+
     //
     // Certificates
     //
   , certificates: {
+      // Certificates
       checkKeypairAsync: function (args) {
         if (!args.domainKeyPath) {
           return PromiseA.reject(new Error("missing options.domainKeyPath"));
         }
 
-        return fs.readFileAsync(args.domainKeyPath, 'ascii');
+        return store.keypairs.checkAsync(args.domainKeyPath);
       }
+      // Certificates
     , setKeypairAsync: function (args, keypair) {
-        return mkdirpAsync(path.dirname(args.domainKeyPath)).then(function () {
-          return fs.writeFileAsync(args.domainKeyPath, keypair.privateKeyPem, 'ascii').then(function () {
-            return keypair;
-          });
-        });
+        return store.keypairs.setAsync(args.domainKeyPath, keypair);
       }
+      // Certificates
     , checkAsync: function (args) {
         if (!args.fullchainPath || !args.privkeyPath || !args.certPath || !args.chainPath) {
           return PromiseA.reject(new Error("missing one or more of privkeyPath, fullchainPath, certPath, chainPath from options"));
@@ -247,6 +218,7 @@ module.exports.create = function (configs) {
           return null;
         });
       }
+      // Certificates
     , setAsync: function (args) {
         // TODO get config
         var pyobj = args.pyobj;
@@ -278,8 +250,7 @@ module.exports.create = function (configs) {
           , sfs.writeFileAsync(fullchainArchive, pems.cert + pems.chain, 'ascii')
           , sfs.writeFileAsync(
               privkeyArchive
-              // TODO nix args.key, args.domainPrivateKeyPem ??
-            , (pems.privkey || pems.key) // || RSA.exportPrivatePem(args.domainKeypair)
+            , pems.privkey
             , 'ascii'
             )
           ]);
@@ -293,7 +264,7 @@ module.exports.create = function (configs) {
           , sfs.writeFileAsync(
               privkeyPath
               // TODO nix args.key, args.domainPrivateKeyPem ??
-            , (pems.privkey || pems.key) // || RSA.exportPrivatePem(args.domainKeypair)
+            , pems.privkey
             , 'ascii'
             )
           ]);
@@ -323,7 +294,104 @@ module.exports.create = function (configs) {
     // Accounts
     //
   , accounts: {
-      checkAsync: function (args) {
+      // Accounts
+      _getAccountKeyPath: function (args) {
+        var promise = PromiseA.resolve(args.accountId);
+
+        if (args.email && !args.accountKeyPath && !args.accountId) {
+          promise = store.accounts._getAccountIdByEmail(args);
+        }
+
+        return promise.then(function (accountId) {
+          if (!accountId) {
+            return null;
+          }
+          return args.accountKeyPath || path.join(args.accountsDir, accountId, 'private_key.json');
+        });
+      }
+      // Accounts
+    , _getAccountIdByEmail: function (args) {
+        // If we read 10,000 account directories looking for
+        // just one email address, that could get crazy.
+        // We should have a folder per email and list
+        // each account as a file in the folder
+        // TODO
+        var email = args.email;
+        if ('string' !== typeof email) {
+          log(args.debug, "No email given");
+          return PromiseA.resolve(null);
+        }
+        return fs.readdirAsync(args.accountsDir).then(function (nodes) {
+          log(args.debug, "success reading arg.accountsDir");
+
+          return PromiseA.all(nodes.map(function (node) {
+            return fs.readFileAsync(path.join(args.accountsDir, node, 'regr.json'), 'utf8').then(function (text) {
+              var regr = JSON.parse(text);
+              regr.__accountId = node;
+
+              return regr;
+            });
+          })).then(function (regrs) {
+            var accountId;
+
+            log(args.debug, "regrs.length", regrs.length);
+
+            regrs.some(function (regr) {
+              return regr.body.contact.some(function (contact) {
+                var match = contact.toLowerCase() === 'mailto:' + email.toLowerCase();
+                if (match) {
+                  accountId = regr.__accountId;
+                  return true;
+                }
+              });
+            });
+
+            if (!accountId) {
+              return null;
+            }
+
+            return accountId;
+          });
+        }).then(function (accountId) {
+          return accountId;
+        }, function (err) {
+          if ('ENOENT' === err.code) {
+            // ignore error
+            return null;
+          }
+
+          return PromiseA.reject(err);
+        });
+      }
+      // Accounts
+    , checkKeypairAsync: function (args) {
+        if (!(args.accountKeyPath || args.accountsDir)) {
+          return PromiseA.reject(new Error("must provide one of options.accountKeyPath or options.accountsDir"));
+        }
+
+        return store.accounts._getAccountKeyPath(args).then(function (keypath) {
+          return store.keypairs.checkAsync(keypath, 'jwk');
+        });
+      }
+      // Accounts
+    , setKeypairAsync: function (args, keypair) {
+        var accountId;
+
+        if (args.email) {
+          // we use insecure md5 - even though we know it's bad - because that's how the python client did
+          accountId = require('crypto').createHash('md5').update(keypair.privateKeyPem).digest('hex');
+        }
+
+        return store.accounts._getAccountKeyPath({
+          accountsDir: args.accountsDir
+        , email: args.email
+        , accountId: args.accountId || accountId
+        }).then(function (keypath) {
+          return store.keypairs.setAsync(keypath, keypair, 'jwk');
+        });
+      }
+      // Accounts
+    , checkAsync: function (args) {
         var promise;
         var files = {};
         var accountId;
@@ -332,13 +400,17 @@ module.exports.create = function (configs) {
           promise = PromiseA.resolve(args.accountId);
         }
         else if (args.email) {
-          promise = getAccountIdByEmail(args);
+          promise = store.accounts._getAccountIdByEmail(args);
         }
         else {
           promise = PromiseA.reject(new Error("must provide accountId or email"));
         }
 
-        promise.then(function (_accountId) {
+        return promise.then(function (_accountId) {
+          log(args.debug, 'accountId:', _accountId);
+          if (!_accountId) {
+            return false;
+          }
           accountId = _accountId;
           var accountDir = path.join(args.accountsDir, accountId);
           var configs = [ 'meta.json', 'private_key.json', 'regr.json' ];
@@ -357,17 +429,23 @@ module.exports.create = function (configs) {
               }
 
               files[keyname] = data;
+
+              return true;
             }, function (err) {
+              log(args.debug, 'Error reading account files:', err);
               files[keyname] = { error: err };
             });
           }));
-        }).then(function () {
+        }).then(function (hasAccount) {
+          if (!hasAccount) {
+            return null;
+          }
           var err;
 
           if (!Object.keys(files).every(function (key) {
             return !files[key].error;
           }) || !files.private_key || !files.private_key.n) {
-            err = new Error("Account '" + accountId + "' was corrupt. No big deal (I think?). Creating a new one...");
+            err = new Error("Account '" + accountId + "' was corrupt (had id, but was missing files).");
             err.code = 'E_ACCOUNT_CORRUPT';
             err.data = files;
             return PromiseA.reject(err);
@@ -383,15 +461,7 @@ module.exports.create = function (configs) {
           return files;
         });
       }
-    , registerAsync: function (args) {
-        // save to renewal / account dir ???
-          return getOrCreateRenewal(copy).then(function (pyobj) {
-
-            copy.pyobj = pyobj;
-            return files;
-          });
-
-      }
+      // Accounts
     , getAsync: function (args) {
         return store.accounts.checkAsync(args).then(function (account) {
           if (!args.account) {
@@ -402,26 +472,24 @@ module.exports.create = function (configs) {
           return account;
         });
       }
-    , setAsync: function (args, account) {
-        var isoDate = new Date().toISOString();
+      // Accounts
+    , setAsync: function (args, reg) {
         var os = require("os");
-        var localname = os.hostname();
-        var accountDir = path.join(args.accountsDir, account.accountId);
-
-        account.meta = account.meta || {
-          creation_host: localname
-        , creation_dt: isoDate
+        var accountId = require('crypto').createHash('md5').update(reg.keypair.privateKeyPem).digest('hex');
+        var accountDir = path.join(args.accountsDir, accountId);
+        var accountMeta = {
+          creation_host: os.hostname()
+        , creation_dt: new Date().toISOString()
         };
 
         return mkdirpAsync(accountDir).then(function () {
-          var RSA = require('rsa-compat').RSA;
 
           // TODO abstract file writing
           return PromiseA.all([
             // meta.json {"creation_host": "ns1.redirect-www.org", "creation_dt": "2015-12-11T04:14:38Z"}
-            fs.writeFileAsync(path.join(accountDir, 'meta.json'), JSON.stringify(account.meta), 'utf8')
+            fs.writeFileAsync(path.join(accountDir, 'meta.json'), JSON.stringify(accountMeta), 'utf8')
             // private_key.json { "e", "d", "n", "q", "p", "kty", "qi", "dp", "dq" }
-          , fs.writeFileAsync(path.join(accountDir, 'private_key.json'), JSON.stringify(RSA.exportPrivateJwk(account.keypair)), 'utf8')
+          , fs.writeFileAsync(path.join(accountDir, 'private_key.json'), JSON.stringify(reg.keypair.privateKeyJwk), 'utf8')
             // regr.json:
             /*
             { body: { contact: [ 'mailto:coolaj86@gmail.com' ],
@@ -431,10 +499,11 @@ module.exports.create = function (configs) {
               new_authzr_uri: 'https://acme-v01.api.letsencrypt.org/acme/new-authz',
               terms_of_service: 'https://letsencrypt.org/documents/LE-SA-v1.0.1-July-27-2015.pdf' }
              */
-          , fs.writeFileAsync(path.join(accountDir, 'regr.json'), JSON.stringify(account.regr), 'utf8')
+          , fs.writeFileAsync(path.join(accountDir, 'regr.json'), JSON.stringify({ body: reg.receipt }), 'utf8')
           ]);
         });
       }
+      // Accounts
     , getAccountIdAsync: function (args) {
         var pyconf = PromiseA.promisifyAll(require('pyconf'));
 
@@ -445,7 +514,7 @@ module.exports.create = function (configs) {
           return accountId;
         }, function (err) {
           if ("ENOENT" === err.code) {
-            return getAccountIdByEmail(args);
+            return store.accounts._getAccountIdByEmail(args);
           }
 
           return PromiseA.reject(err);
@@ -457,6 +526,7 @@ module.exports.create = function (configs) {
     // Configs
     //
   , configs: {
+      // Configs
       checkAsync: function (copy) {
         copy.domains = [];
 
@@ -469,6 +539,7 @@ module.exports.create = function (configs) {
           return pyToJson(pyobj);
         });
       }
+      // Configs
     , _checkHelperAsync: function (args) {
         var pyconf = PromiseA.promisifyAll(require('pyconf'));
 
@@ -480,6 +551,7 @@ module.exports.create = function (configs) {
           });
         });
       }
+      // Configs
     , getAsync: function (args) {
         return store.configs._checkHelperAsync(args).then(function (pyobj) {
           var minver = pyobj.checkpoints >= 0;
@@ -519,6 +591,7 @@ module.exports.create = function (configs) {
           return writeRenewalConfig(args);
         });
       }
+      // Configs
     , allAsync: function (copy) {
         copy.domains = [];
 
