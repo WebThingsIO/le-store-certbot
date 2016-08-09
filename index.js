@@ -117,7 +117,7 @@ var defaults = {
 , chainPath: [ ':configDir', 'live', ':hostname', 'chain.pem' ].join(path.sep)
 
 , rsaKeySize: 2048
-, webrootPath: [ '~', 'letsencrypt', 'srv', 'www', ':hostname', '.well-known', 'acme-challenge' ].join(path.sep)
+, webrootPath: [ ':workDir', 'acme-challenge' ].join(path.sep)
 };
 
 module.exports.create = function (configs) {
@@ -129,6 +129,9 @@ module.exports.create = function (configs) {
         return configs;
       }
 
+      if (!configs.domainKeyPath) {
+        configs.domainKeyPath = configs.privkeyPath || defaults.privkeyPath;
+      }
       Object.keys(defaults).forEach(function (key) {
         if (!(key in configs)) {
           configs[key] = defaults[key];
@@ -148,6 +151,12 @@ module.exports.create = function (configs) {
           else {
             return { privateKeyPem: key };
           }
+        }, function (err) {
+          if ('ENOENT' !== err.code) {
+            throw err;
+          }
+
+          return null;
         });
       }
     , setAsync: function (keypath, keypair, format) {
@@ -178,11 +187,11 @@ module.exports.create = function (configs) {
           return PromiseA.reject(new Error("missing options.domainKeyPath"));
         }
 
-        return store.keypairs.checkAsync(args.domainKeyPath);
+        return store.keypairs.checkAsync(args.domainKeyPath, 'pem');
       }
       // Certificates
     , setKeypairAsync: function (args, keypair) {
-        return store.keypairs.setAsync(args.domainKeyPath, keypair);
+        return store.keypairs.setAsync(args.domainKeyPath, keypair, 'pem');
       }
       // Certificates
     , checkAsync: function (args) {
@@ -220,71 +229,64 @@ module.exports.create = function (configs) {
       }
       // Certificates
     , setAsync: function (args) {
-        // TODO get config
-        var pyobj = args.pyobj;
-        var pems = args.pems;
+        return store.configs.getAsync(args).then(function (pyobj) {
+          var pems = args.pems;
 
-        pyobj.checkpoints = parseInt(pyobj.checkpoints, 10) || 0;
+          pyobj.checkpoints = parseInt(pyobj.checkpoints, 10) || 0;
 
-        var liveDir = args.liveDir || path.join(args.configDir, 'live', args.domains[0]);
+          var liveDir = args.liveDir || path.join(args.configDir, 'live', args.domains[0]);
 
-        var certPath = args.certPath || pyobj.cert || path.join(liveDir, 'cert.pem');
-        var fullchainPath = args.fullchainPath || pyobj.fullchain || path.join(liveDir, 'fullchain.pem');
-        var chainPath = args.chainPath || pyobj.chain || path.join(liveDir, 'chain.pem');
-        var privkeyPath = args.privkeyPath || pyobj.privkey
-          //|| args.domainPrivateKeyPath || args.domainKeyPath || pyobj.keyPath
-          || path.join(liveDir, 'privkey.pem');
+          var certPath = args.certPath || pyobj.cert || path.join(liveDir, 'cert.pem');
+          var fullchainPath = args.fullchainPath || pyobj.fullchain || path.join(liveDir, 'fullchain.pem');
+          var chainPath = args.chainPath || pyobj.chain || path.join(liveDir, 'chain.pem');
+          var privkeyPath = args.privkeyPath || pyobj.privkey
+            || args.domainKeyPath
+            || path.join(liveDir, 'privkey.pem');
 
-        var archiveDir = args.archiveDir || path.join(args.configDir, 'archive', args.domains[0]);
+          var archiveDir = args.archiveDir || path.join(args.configDir, 'archive', args.domains[0]);
 
-        var checkpoints = pyobj.checkpoints.toString();
-        var certArchive = path.join(archiveDir, 'cert' + checkpoints + '.pem');
-        var fullchainArchive = path.join(archiveDir, 'fullchain' + checkpoints + '.pem');
-        var chainArchive = path.join(archiveDir, 'chain'+ checkpoints + '.pem');
-        var privkeyArchive = path.join(archiveDir, 'privkey' + checkpoints + '.pem');
+          var checkpoints = pyobj.checkpoints.toString();
+          var certArchive = path.join(archiveDir, 'cert' + checkpoints + '.pem');
+          var fullchainArchive = path.join(archiveDir, 'fullchain' + checkpoints + '.pem');
+          var chainArchive = path.join(archiveDir, 'chain'+ checkpoints + '.pem');
+          var privkeyArchive = path.join(archiveDir, 'privkey' + checkpoints + '.pem');
 
-        return mkdirpAsync(archiveDir).then(function () {
-          return PromiseA.all([
-            sfs.writeFileAsync(certArchive, pems.cert, 'ascii')
-          , sfs.writeFileAsync(chainArchive, pems.chain, 'ascii')
-          , sfs.writeFileAsync(fullchainArchive, pems.cert + pems.chain, 'ascii')
-          , sfs.writeFileAsync(
-              privkeyArchive
-            , pems.privkey
-            , 'ascii'
-            )
-          ]);
-        }).then(function () {
-          return mkdirpAsync(liveDir);
-        }).then(function () {
-          return PromiseA.all([
-            sfs.writeFileAsync(certPath, pems.cert, 'ascii')
-          , sfs.writeFileAsync(chainPath, pems.chain, 'ascii')
-          , sfs.writeFileAsync(fullchainPath, pems.cert + pems.chain, 'ascii')
-          , sfs.writeFileAsync(
-              privkeyPath
-              // TODO nix args.key, args.domainPrivateKeyPem ??
-            , pems.privkey
-            , 'ascii'
-            )
-          ]);
-        }).then(function () {
-          pyobj.checkpoints += 1;
-          args.checkpoints += 1;
+          return mkdirpAsync(archiveDir).then(function () {
+            return PromiseA.all([
+              sfs.writeFileAsync(certArchive, pems.cert, 'ascii')
+            , sfs.writeFileAsync(chainArchive, pems.chain, 'ascii')
+            , sfs.writeFileAsync(fullchainArchive, pems.cert + pems.chain, 'ascii')
+            , sfs.writeFileAsync(privkeyArchive, pems.privkey, 'ascii')
+            ]);
+          }).then(function () {
+            return mkdirpAsync(liveDir);
+          }).then(function () {
+            return PromiseA.all([
+              sfs.writeFileAsync(certPath, pems.cert, 'ascii')
+            , sfs.writeFileAsync(chainPath, pems.chain, 'ascii')
+            , sfs.writeFileAsync(fullchainPath, pems.cert + pems.chain, 'ascii')
+            , sfs.writeFileAsync(privkeyPath, pems.privkey, 'ascii')
+            ]);
+          }).then(function () {
+            pyobj.checkpoints += 1;
+            args.checkpoints += 1;
 
-          return writeRenewalConfig(args);
-        }).then(function () {
-          return {
-            privkey: pems.privkey
-          , cert: pems.cert
-          , chain: pems.chain
+            // TODO other than for compatibility this is optional, right?
+            // or is it actually needful for renewal? (i.e. list of domains)
+            return writeRenewalConfig(args);
+          }).then(function () {
+            return {
+              privkey: pems.privkey
+            , cert: pems.cert
+            , chain: pems.chain
 
-            /*
-            // TODO populate these only if they are actually known
-          , issuedAt: Date.now()
-          , expiresAt: Date.now() + (90 * 24 * 60 * 60 * 100)
-            */
-          };
+              /*
+              // TODO populate these only if they are actually known
+            , issuedAt: Date.now()
+            , expiresAt: Date.now() + (90 * 24 * 60 * 60 * 100)
+              */
+            };
+          });
         });
       }
 
@@ -466,17 +468,6 @@ module.exports.create = function (configs) {
         });
       }
       // Accounts
-    , getAsync: function (args) {
-        return store.accounts.checkAsync(args).then(function (account) {
-          if (!args.account) {
-            return store.accounts.registerAsync(args);
-          }
-
-          //args.account = account;
-          return account;
-        });
-      }
-      // Accounts
     , setAsync: function (args, reg) {
         var os = require("os");
         var accountId = store.accounts._getAccountIdByPublicKey(reg.keypair);
@@ -598,7 +589,7 @@ module.exports.create = function (configs) {
         //, logsDir: args.logsDir
           args.rsaKeySize = args.rsaKeySize || pyobj.rsaKeySize;
           args.http01Port = args.http01Port || pyobj.http01Port;
-          args.domainKeyPath = args.domainPrivateKeyPath || args.domainKeyPath || args.keyPath || pyobj.keyPath;
+          args.domainKeyPath = args.domainKeyPath || args.keyPath || pyobj.keyPath;
 
           return writeRenewalConfig(args);
         });
