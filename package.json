@@ -22,5 +22,11 @@
   "bugs": {
     "url": "https://github.com/Daplie/le-store-certbot/issues"
   },
-  "homepage": "https://github.com/Daplie/le-store-certbot#readme"
+  "homepage": "https://github.com/Daplie/le-store-certbot#readme",
+  "dependencies": {
+    "bluebird": "^3.4.1",
+    "mkdirp": "^0.5.1",
+    "pyconf": "^1.1.2",
+    "safe-replace": "^1.0.2"
+  }
 }
