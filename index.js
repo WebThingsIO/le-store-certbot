@@ -144,6 +144,9 @@ module.exports.create = function (configs) {
 
   , keypairs: {
       checkAsync: function (keypath, format) {
+        if (!keypath) {
+          return null;
+        }
         return fs.readFileAsync(keypath, 'ascii').then(function (key) {
           if ('jwk' === format) {
             return { privateKeyJwk: JSON.parse(key) };
