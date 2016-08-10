@@ -111,7 +111,7 @@ var defaults = {
     return (copy.server || '').replace('https://', '').replace(/(\/)$/, '').replace(/\//g, path.sep);
   }
 
-, privkeyPath: [ ':configDir', 'live', ':hostname', 'privkey.pem' ].join(path.sep)
+, privkeyPath: ':configDir/live/:hostname/privkey.pem'.split(/\//).join(path.sep)
 , fullchainPath: [ ':configDir', 'live', ':hostname', 'fullchain.pem' ].join(path.sep)
 , certPath: [ ':configDir', 'live', ':hostname', 'cert.pem' ].join(path.sep)
 , chainPath: [ ':configDir', 'live', ':hostname', 'chain.pem' ].join(path.sep)
@@ -132,8 +132,9 @@ module.exports.create = function (configs) {
       if (!configs.domainKeyPath) {
         configs.domainKeyPath = configs.privkeyPath || defaults.privkeyPath;
       }
+
       Object.keys(defaults).forEach(function (key) {
-        if (!(key in configs)) {
+        if (!configs[key]) {
           configs[key] = defaults[key];
         }
       });
