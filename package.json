@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Daplie/le-store-certbot.git"
+    "url": "git+https://git.daplie.com/Daplie/le-store-certbot.git"
   },
   "keywords": [
     "le-store",
@@ -20,9 +20,9 @@
   "author": "AJ ONeal <coolaj86@gmail.com> (https://coolaj86.com/)",
   "license": "(MIT OR Apache-2.0)",
   "bugs": {
-    "url": "https://github.com/Daplie/le-store-certbot/issues"
+    "url": "https://git.daplie.com/Daplie/le-store-certbot/issues"
   },
-  "homepage": "https://github.com/Daplie/le-store-certbot#readme",
+  "homepage": "https://git.daplie.com/Daplie/le-store-certbot#readme",
   "dependencies": {
     "bluebird": "^3.4.1",
     "mkdirp": "^0.5.1",
