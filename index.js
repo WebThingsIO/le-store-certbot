@@ -5,6 +5,7 @@ var mkdirpAsync = PromiseA.promisify(require('mkdirp'));
 var path = require('path');
 var fs = PromiseA.promisifyAll(require('fs'));
 var sfs = require('safe-replace');
+var os = require('os');
 
 function log(debug) {
   if (debug) {
@@ -100,9 +101,9 @@ function pyToJson(pyobj) {
 }
 
 var defaults = {
-  configDir: [ '~', 'letsencrypt', 'etc' ].join(path.sep)                     // /etc/letsencrypt/
-, logsDir: [ '~', 'letsencrypt', 'var', 'log' ].join(path.sep)                // /var/log/letsencrypt/
-, workDir: [ '~', 'letsencrypt', 'var', 'lib' ].join(path.sep)                // /var/lib/letsencrypt/
+  configDir: [ os.homedir(), 'letsencrypt', 'etc' ].join(path.sep)                     // /etc/letsencrypt/
+, logsDir: [ os.homedir(), 'letsencrypt', 'var', 'log' ].join(path.sep)                // /var/log/letsencrypt/
+, workDir: [ os.homedir(), 'letsencrypt', 'var', 'lib' ].join(path.sep)                // /var/lib/letsencrypt/
 
 , accountsDir: [ ':configDir', 'accounts', ':serverDir' ].join(path.sep)
 , renewalPath: [ ':configDir', 'renewal', ':hostname.conf' ].join(path.sep)
