@@ -6,6 +6,7 @@ var path = require('path');
 var fs = PromiseA.promisifyAll(require('fs'));
 var sfs = require('safe-replace');
 var os = require('os');
+var symlink = require('fs-symlink');
 
 function log(debug) {
   if (debug) {
@@ -267,10 +268,10 @@ module.exports.create = function (configs) {
             return mkdirpAsync(liveDir);
           }).then(function () {
             return PromiseA.all([
-              sfs.writeFileAsync(certPath, pems.cert, 'ascii')
-            , sfs.writeFileAsync(chainPath, pems.chain, 'ascii')
-            , sfs.writeFileAsync(fullchainPath, pems.cert + pems.chain, 'ascii')
-            , sfs.writeFileAsync(privkeyPath, pems.privkey, 'ascii')
+              symlink(certArchive, certPath)
+            , symlink(chainArchive, chainPath)
+            , symlink(fullchainArchive, fullchainPath)
+            , symlink(privkeyArchive, privkeyPath)
             ]);
           }).then(function () {
             pyobj.checkpoints += 1;
