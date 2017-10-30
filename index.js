@@ -482,6 +482,8 @@ module.exports.create = function (configs) {
           creation_host: os.hostname()
         , creation_dt: new Date().toISOString()
         };
+        var uri = args.server.replace(/\/directory.*/,
+                                      '/acme/reg/' + accountId);
 
         return mkdirpAsync(accountDir).then(function () {
 
@@ -500,7 +502,9 @@ module.exports.create = function (configs) {
               new_authzr_uri: 'https://acme-v01.api.letsencrypt.org/acme/new-authz',
               terms_of_service: 'https://letsencrypt.org/documents/LE-SA-v1.0.1-July-27-2015.pdf' }
              */
-          , fs.writeFileAsync(path.join(accountDir, 'regr.json'), JSON.stringify({ body: reg.receipt }), 'utf8')
+          , fs.writeFileAsync(path.join(accountDir, 'regr.json'),
+                              JSON.stringify({ body: reg.receipt, uri: uri }),
+                              'utf8')
           ]);
         }).then(function () {
           return {
