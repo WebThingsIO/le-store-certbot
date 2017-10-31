@@ -374,7 +374,8 @@ module.exports.create = function (configs) {
       // Accounts
     , _getAccountIdByPublicKey: function (keypair) {
         // we use insecure md5 - even though we know it's bad - because that's how the python client did
-        return require('crypto').createHash('md5').update(keypair.publicKeyPem).digest('hex');
+        const pubkey = keypair.publicKeyPem.replace(/\r/g, '');
+        return require('crypto').createHash('md5').update(pubkey).digest('hex');
       }
       // Accounts
     , checkKeypairAsync: function (args) {
